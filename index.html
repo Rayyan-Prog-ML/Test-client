@@ -1,0 +1,88 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RMagine</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              gray: {
+                750: '#2d3748',
+                850: '#1a202c',
+                950: '#0d1117',
+              },
+              brand: {
+                400: '#818cf8',
+                500: '#6366f1',
+                600: '#4f46e5',
+              }
+            },
+            animation: {
+              'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            }
+          },
+        },
+      };
+    </script>
+    <style>
+      /* Custom scrollbar for dark theme */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #1a202c; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #4a5568; 
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #718096; 
+      }
+      body {
+        background-color: #0f172a;
+        color: #e2e8f0;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // Global mock for Node.js 'path' module to prevent crashes in dependencies
+      window.path = {
+        join: (...args) => args.join('/').replace(/\/+/g, '/'),
+        resolve: (...args) => args.join('/').replace(/\/+/g, '/'),
+        basename: (p) => p.split('/').pop(),
+        dirname: (p) => p.split('/').slice(0, -1).join('/') || '.',
+        extname: (p) => {
+          const base = p.split('/').pop();
+          const idx = base.lastIndexOf('.');
+          return idx === -1 ? '' : base.substring(idx);
+        }
+      };
+      // Some old libraries might look for 'global'
+      window.global = window;
+    </script>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

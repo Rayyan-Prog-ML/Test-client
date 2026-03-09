@@ -1,0 +1,32 @@
+{
+  "name": "clips",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "vite build",
+    "lint": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@google/genai": "^1.30.0",
+    "express": "^5.2.1",
+    "file-saver": "^2.0.5",
+    "jszip": "^3.10.1",
+    "openai": "^6.25.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "wavespeed": "^0.2.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/file-saver": "^2.0.7",
+    "@types/jszip": "^3.4.0",
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

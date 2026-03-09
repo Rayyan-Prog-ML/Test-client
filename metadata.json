@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Remix: RMagine Master",
+  "description": "A high-end cinematic video production suite that generates viral-ready scripts, documentary-style narrations, and visual storyboards using Gemini and OpenAI. Features AI voice synthesis, image generation, and cinematic overlays.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
