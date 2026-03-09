@@ -201,7 +201,7 @@ const Player: React.FC<PlayerProps> = ({
     let textY = height / 2;
     
     // Determine max width based on layout
-    const maxWidth = layout === 'centered' ? width * 0.85 : (width / 2) - 80;
+    const maxWidth = layout === 'centered' ? width * 0.75 : (width / 2) - 80;
 
     if (layout === 'split-left') {
         ctx.textAlign = 'left';
@@ -210,7 +210,7 @@ const Player: React.FC<PlayerProps> = ({
         ctx.textAlign = 'right';
         textX = width / 2 - 40; 
     } else if (layout === 'centered') {
-        textY = height * 0.15; // Move text to the top for centered layout
+        textY = height * 0.2; // Move text down a bit to avoid top rounded corners
     }
 
     // Dynamic Font Scaling Logic
@@ -248,6 +248,12 @@ const Player: React.FC<PlayerProps> = ({
     const lineHeight = fontSize * 1.2;
     const totalHeight = lines.length * lineHeight;
     let startY = textY - (totalHeight / 2) + (lineHeight / 2);
+
+    // Ensure text doesn't overflow the top of the canvas
+    const minPaddingTop = height * 0.05 + (lineHeight / 2);
+    if (startY < minPaddingTop) {
+        startY = minPaddingTop;
+    }
 
     ctx.lineWidth = fontSize * 0.15;
 
