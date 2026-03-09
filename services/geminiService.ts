@@ -192,12 +192,13 @@ export const generateImagePrompts = async (scenes: Scene[]): Promise<string[]> =
           content: `Analyze each individual scene and generate highly detailed image prompts for a single, high-quality subject.
           
           CRITICAL INSTRUCTIONS:
-          1. ONE SUBJECT ONLY: Describe exactly ONE central subject or object. NEVER group multiple images or objects into one composition.
-          2. NO TEXT: DO NOT include any instructions to render text, labels, or words inside the image. The image must be purely visual.
-          3. PURE WHITE BACKGROUND: Every image MUST be on a clean, studio-style white background.
-          4. SHARP FOCUS: The subject should be centered and in sharp focus.
-          5. VISUAL CONTINUITY: Maintain consistent colors and style across scenes.
-          6. Provide only the detailed image prompts for every scene, with no extra explanation.
+          1. NEVER REFUSE A PROMPT: If a scene asks for a "montage", "collage", or something complex, DO NOT output "Do not generate" or "violates instructions". Instead, creatively adapt the prompt to describe a single, cohesive, highly detailed image that captures the essence of the request.
+          2. ONE SUBJECT ONLY: Describe exactly ONE central subject or object. NEVER group multiple images or objects into one composition.
+          3. NO TEXT: DO NOT include any instructions to render text, labels, or words inside the image. The image must be purely visual.
+          4. PURE WHITE BACKGROUND: Every image MUST be on a clean, studio-style white background.
+          5. SHARP FOCUS: The subject should be centered and in sharp focus.
+          6. VISUAL CONTINUITY: Maintain consistent colors and style across scenes.
+          7. Provide only the detailed image prompts for every scene, with no extra explanation.
           
           Return the response as a JSON object with a "prompts" array.`
         },

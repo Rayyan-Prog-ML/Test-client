@@ -26,6 +26,8 @@ import Timeline from './components/Timeline';
 import Player from './components/Player';
 
 const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
   const [project, setProject] = useState<ProjectState>({
     videoTitle: '', audioFile: null, audioDuration: 0, scriptText: '', ttsVoice: 'onyx', scenes: [], aspectRatio: '16:9',
     backgroundAudioFile: null, backgroundVolume: 0.05, enableBackgroundMusic: false, enableEmbers: true, 
@@ -719,6 +721,47 @@ const App: React.FC = () => {
     a.click();
     document.body.removeChild(a);
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center font-sans">
+        <div className="bg-gray-900 p-8 rounded-2xl border border-gray-800 shadow-2xl max-w-md w-full">
+          <div className="flex items-center justify-center gap-3 mb-8">
+            <div className="w-10 h-10 rounded bg-brand-500 flex items-center justify-center font-bold text-white text-xl">R</div>
+            <h1 className="text-2xl font-bold tracking-tight text-white">RMagine <span className="text-brand-400">Master</span></h1>
+          </div>
+          <p className="text-gray-400 text-center mb-6 text-sm">Please enter the access password to continue.</p>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            // In a real app, this would be an environment variable like import.meta.env.VITE_APP_PASSWORD
+            // For this setup, we check against a hardcoded string or env var
+            const correctPassword = import.meta.env.VITE_APP_PASSWORD || 'VideoMaker2026!';
+            if (passwordInput === correctPassword) {
+              setIsAuthenticated(true);
+            } else {
+              alert('Incorrect password');
+              setPasswordInput('');
+            }
+          }} className="space-y-4">
+            <input 
+              type="password" 
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder="Enter password..."
+              className="w-full bg-gray-950 border border-gray-800 rounded-lg p-4 text-white focus:border-brand-500 outline-none transition-colors"
+              autoFocus
+            />
+            <button 
+              type="submit"
+              className="w-full bg-brand-600 hover:bg-brand-500 text-white font-bold py-4 rounded-lg transition-colors shadow-lg"
+            >
+              Unlock Application
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col font-sans overflow-hidden">
