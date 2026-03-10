@@ -1,6 +1,5 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import fetch from "node-fetch"; // We'll use native fetch or node-fetch if needed. Actually Node 18+ has native fetch.
 
 async function startServer() {
   const app = express();
@@ -140,6 +139,29 @@ async function startServer() {
       res.status(500).json({ error: result.error || "No output from Wavespeed" });
     } catch (error: any) {
       console.error("Wavespeed Video Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 5. Image Proxy for Downloading
+  app.get("/api/proxy/image", async (req, res) => {
+    try {
+      const { url } = req.query;
+      if (!url || typeof url !== 'string') {
+        return res.status(400).json({ error: "Missing or invalid url parameter" });
+      }
+      const response = await fetch(url);
+      if (!response.ok) {
+        return res.status(response.status).json({ error: "Failed to fetch image" });
+      }
+      const contentType = response.headers.get('content-type');
+      if (contentType) {
+        res.setHeader('Content-Type', contentType);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+    } catch (error: any) {
+      console.error("Image Proxy Error:", error);
       res.status(500).json({ error: error.message });
     }
   });

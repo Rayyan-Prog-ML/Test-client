@@ -4,17 +4,46 @@ import { Scene, AspectRatio, OpenAIVoice, ChapterOutline } from "../types";
 import WaveSpeed from 'wavespeed';
 
 const openRouterClient = new OpenAI({
-    baseURL: 'https://openrouter.ai/api/v1',
-    apiKey: process.env.OPENROUTER_API_KEY || process.env.API_KEY, // Fallback to API_KEY if OPENROUTER_API_KEY is not set
+    baseURL: typeof window !== 'undefined' ? `${window.location.origin}/api/openrouter` : '/api/openrouter',
+    apiKey: 'PROXY', // The actual key is handled by the server
     dangerouslyAllowBrowser: true,
     defaultHeaders: {
-        "HTTP-Referer": "https://aistudio.google.com", // Optional, for OpenRouter rankings
-        "X-Title": "Clips Video Production Pipeline", // Optional
+        "HTTP-Referer": "https://aistudio.google.com",
+        "X-Title": "Clips Video Production Pipeline",
     }
 });
 
-export const STYLE_KEYWORDS = "Minimalist editorial design, pure white background, high-end graphic composition, studio lighting, sharp focus, professional documentary aesthetic. Media is often placed in a floating card with subtle shadows. Typography is bold, clean, and modern.";
+export const STYLE_KEYWORDS = "Minimalist editorial design, pure white background, high-end graphic composition, studio lighting, sharp focus, professional documentary aesthetic. Media is often placed in a floating card with subtle shadows. NO TEXT, NO LABELS, NO LETTERS inside the image itself. Focus on the subject only.";
 export const SAFETY_BLOCK = "STRICT YOUTUBE AD POLICY COMPLIANCE: No profanity, nudity, or graphic battlefield gore. Maintain a respectful educational tone. Maintain facts checks. Ensure the language is safe for 'Green Dollar' monetization, avoiding content that promotes dangerous, unhealthy eating habits, or eating disorders.";
+
+/**
+ * Helper to safely parse potentially truncated JSON from LLM responses
+ */
+function safeJsonParse(text: string): any {
+    try {
+        return JSON.parse(text);
+    } catch (e: any) {
+        console.warn("JSON parse failed, attempting to repair truncated JSON...", e.message);
+        
+        let repaired = text;
+        // Try to find the last complete object in the array
+        const lastBrace = repaired.lastIndexOf('}');
+        if (lastBrace > -1) {
+            repaired = repaired.substring(0, lastBrace + 1);
+            try { return JSON.parse(repaired + ']}'); } catch(e2) {}
+            try { return JSON.parse(repaired + '}]}'); } catch(e2) {}
+            try { return JSON.parse(repaired + ']'); } catch(e2) {}
+            try { return JSON.parse(repaired + '}'); } catch(e2) {}
+        }
+        
+        // Try to close string and object
+        try { return JSON.parse(text + '"]}'); } catch(e4) {}
+        try { return JSON.parse(text + '"}'); } catch(e4) {}
+        try { return JSON.parse(text + '"]}]}'); } catch(e4) {}
+        
+        throw e; // If all repairs fail, throw the original error
+    }
+}
 
 /**
  * CONCURRENCY CONTROLLER & JITTER ENGINE
@@ -57,18 +86,22 @@ async function processInBatches<T>(
  * Verifies if the API key is present.
  */
 export const verifyApiKeys = async (): Promise<number> => {
-    const keys = {
-        OPENROUTER: !!(process.env.OPENROUTER_API_KEY || process.env.API_KEY),
-        OPENAI: !!process.env.OPENAI_API_KEY,
-        WAVESPEED: !!process.env.WAVESPEED_API_KEY
-    };
-    console.log("[DEBUG] API Key Status:", keys);
-    
-    let count = 0;
-    if (keys.OPENROUTER) count++;
-    if (keys.OPENAI) count++;
-    if (keys.WAVESPEED) count++;
-    return count;
+    try {
+        const response = await fetch('/api/health');
+        if (!response.ok) return 0;
+        const data = await response.json();
+        const keys = data.keys;
+        console.log("[DEBUG] API Key Status:", keys);
+        
+        let count = 0;
+        if (keys.OPENROUTER) count++;
+        if (keys.OPENAI) count++;
+        if (keys.WAVESPEED) count++;
+        return count;
+    } catch (e) {
+        console.error("Failed to verify API keys:", e);
+        return 0;
+    }
 };
 
 /**
@@ -147,7 +180,7 @@ export const generateScenes = async (script: string, totalDuration: number): Pro
     });
 
     const text = response.choices[0].message.content || '{"scenes":[]}';
-    const data = JSON.parse(text);
+    const data = safeJsonParse(text);
     const rawScenes = data.scenes || [];
     
     // Calculate timing based on word count of each segment for "natural" allocation
@@ -210,7 +243,8 @@ export const generateImagePrompts = async (scenes: Scene[]): Promise<string[]> =
       response_format: { type: "json_object" }
     });
     const text = response.choices[0].message.content || '{"prompts":[]}';
-    return JSON.parse(text).prompts;
+    const data = safeJsonParse(text);
+    return Array.isArray(data.prompts) ? data.prompts : [];
   }, 2);
 };
 
@@ -244,7 +278,8 @@ export const generateVideoPrompts = async (scenes: Scene[]): Promise<string[]> =
       response_format: { type: "json_object" }
     });
     const text = response.choices[0].message.content || '{"videoPrompts":[]}';
-    return JSON.parse(text).videoPrompts;
+    const data = safeJsonParse(text);
+    return Array.isArray(data.videoPrompts) ? data.videoPrompts : [];
   }, 2);
 };
 
@@ -252,32 +287,34 @@ export const generateVideoPrompts = async (scenes: Scene[]): Promise<string[]> =
  * Image Generation Cluster (Wavespeed.ai Flux-Schnell)
  */
 export const generateImageForScene = async (description: string, aspectRatio: AspectRatio): Promise<string> => {
-    const apiKey = process.env.WAVESPEED_API_KEY;
-    if (!apiKey) {
-        // Fallback to Gemini if Wavespeed key is missing
-        console.warn("WAVESPEED_API_KEY missing, falling back to Gemini.");
-        return await generateImageWithOpenRouter(description, aspectRatio);
-    }
-
     const finalPrompt = `STYLE: ${STYLE_KEYWORDS} SCENE: ${description}. ${SAFETY_BLOCK}`;
     
     try {
-        // Use the official SDK for images too
-        // @ts-ignore
-        const client = new WaveSpeed(apiKey);
-        
-        const result = await client.run("wavespeed-ai/flux-schnell", {
-            prompt: finalPrompt,
-            aspect_ratio: aspectRatio,
-            num_images: 1,
-            output_format: "png"
+        const response = await fetch("/api/wavespeed/image", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                prompt: finalPrompt,
+                aspect_ratio: aspectRatio
+            })
         });
 
-        if (result && result.outputs && result.outputs.length > 0) {
-            return result.outputs[0];
+        if (!response.ok) {
+            if (response.status === 401) {
+                console.warn("WAVESPEED_API_KEY missing, falling back to Gemini.");
+                return await generateImageWithOpenRouter(description, aspectRatio);
+            }
+            throw new Error(`WAVESPEED_IMAGE_FAILED: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data.output) {
+            return data.output;
         }
         
-        throw new Error(result.error || "IMAGE_GENERATION_FAILED_NO_OUTPUT");
+        throw new Error("IMAGE_GENERATION_FAILED_NO_OUTPUT");
     } catch (err) {
         console.error("Wavespeed image generation failed, falling back to Gemini:", err);
         return await generateImageWithOpenRouter(description, aspectRatio);
@@ -318,36 +355,32 @@ const generateImageWithOpenRouter = async (description: string, aspectRatio: Asp
  * Video Generation Cluster (Wavespeed.ai Wan-2.2 I2V)
  */
 export const generateVideoForScene = async (prompt: string, imageUrl: string, retries = 2): Promise<string> => {
-    const apiKey = process.env.WAVESPEED_API_KEY;
-    if (!apiKey) {
-        throw new Error("WAVESPEED_API_KEY_MISSING");
-    }
-
     const finalPrompt = `STYLE: ${STYLE_KEYWORDS} VIDEO: ${prompt}. ${SAFETY_BLOCK}`;
     
     try {
-        // Use the official SDK as requested
-        // @ts-ignore - WaveSpeed SDK might not have types
-        const client = new WaveSpeed(apiKey);
-        
-        // Increased robustness by adding a slight delay before starting to avoid burst issues
-        await new Promise(r => setTimeout(r, 500));
-
-        const result = await client.run("wavespeed-ai/wan-2.2/i2v-480p-ultra-fast", {
-            prompt: finalPrompt,
-            image: imageUrl,
-            duration: 5,
-            seed: -1
+        const response = await fetch("/api/wavespeed/video", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                prompt: finalPrompt,
+                image_url: imageUrl
+            })
         });
 
-        if (result && result.outputs && result.outputs.length > 0) {
-            return result.outputs[0];
-        }
-        
-        if (result && result.error) {
-            throw new Error(result.error);
+        if (!response.ok) {
+            if (response.status === 401) {
+                throw new Error("WAVESPEED_API_KEY_MISSING");
+            }
+            throw new Error(`WAVESPEED_VIDEO_FAILED: ${response.status}`);
         }
 
+        const data = await response.json();
+        if (data.output) {
+            return data.output;
+        }
+        
         throw new Error("VIDEO_GENERATION_FAILED_NO_OUTPUT");
     } catch (err: any) {
         console.error(`Wavespeed video generation failed (Retries left: ${retries}):`, err);
@@ -378,6 +411,8 @@ export const masterAuditScript = async (script: string, topic: string): Promise<
           role: "system",
           content: `You are a professional script editor. Review this long-form documentary script. Identify patches. Topic: ${topic}.
           
+          CRITICAL: Ensure the script contains ONLY spoken narration. If you see any labels like "Narrator:", "Visuals:", "[Introduction]", or stage directions, your patches MUST remove them.
+          
           Return the response as a JSON object with:
           - "patches": an array of objects with "originalSnippet", "improvedText", and "reason".
           - "summaryOfChanges": a string summary.
@@ -395,7 +430,7 @@ export const masterAuditScript = async (script: string, topic: string): Promise<
       reasoning: { enabled: true }
     });
     const text = response.choices[0].message.content || '{"patches":[], "summaryOfChanges":""}';
-    return JSON.parse(text);
+    return safeJsonParse(text);
   }, 2);
 
   let finalScript = script;
@@ -405,7 +440,7 @@ export const masterAuditScript = async (script: string, topic: string): Promise<
       finalScript = finalScript.replace(patch.originalSnippet, patch.improvedText);
     }
   });
-  return { auditedScript: finalScript, changesLog: log };
+  return { auditedScript: finalScript || "", changesLog: log || "" };
 };
 
 /**
@@ -494,11 +529,6 @@ const createWavBlob = (pcmBuffer: ArrayBuffer, sampleRate: number): Blob => {
 };
 
 export const generateVoiceOverForScenes = async (scenes: Scene[], voice: OpenAIVoice, onProgress: (p: number, m: string) => void): Promise<{ masterAudioBlob: Blob, updatedScenes: Scene[], audioDuration: number }> => {
-    const apiKey = process.env.OPENAI_API_KEY || "";
-    if (!apiKey) {
-        throw new Error("OPENAI_API_KEY_MISSING");
-    }
-
     onProgress(5, `Starting synthesis of ${scenes.length} scenes...`);
     
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -524,10 +554,9 @@ export const generateVoiceOverForScenes = async (scenes: Scene[], voice: OpenAIV
                     return;
                 }
 
-                const response = await fetch("https://api.openai.com/v1/audio/speech", {
+                const response = await fetch("/api/openai/audio/speech", {
                     method: "POST",
                     headers: {
-                        "Authorization": `Bearer ${apiKey}`,
                         "Content-Type": "application/json"
                     },
                     body: JSON.stringify({
@@ -544,6 +573,9 @@ export const generateVoiceOverForScenes = async (scenes: Scene[], voice: OpenAIV
                         const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : 2000 * Math.pow(2, attempts);
                         await new Promise(r => setTimeout(r, waitTime));
                         throw new Error(`RATE_LIMIT`);
+                    }
+                    if (response.status === 401) {
+                        throw new Error("OPENAI_API_KEY_MISSING");
                     }
                     throw new Error(`OPENAI_TTS_FAILED: ${response.status}`);
                 }
@@ -652,11 +684,6 @@ export const generateVoiceOverForScenes = async (scenes: Scene[], voice: OpenAIV
 };
 
 export const generateVoiceOver = async (text: string, voice: OpenAIVoice, onProgress: (p: number, m: string) => void): Promise<Blob> => {
-    const apiKey = process.env.OPENAI_API_KEY || "";
-    if (!apiKey) {
-        throw new Error("OPENAI_API_KEY_MISSING");
-    }
-
     const cleanedText = text.replace(/[*_#~`]/g, '').trim();
     const chunks: string[] = [];
     let pos = 0;
@@ -687,10 +714,9 @@ export const generateVoiceOver = async (text: string, voice: OpenAIVoice, onProg
                 console.log(`[TTS] Requesting part ${index + 1}/${chunks.length} at ${new Date().toISOString()} (Attempt ${attempts + 1})...`);
                 const startTime = Date.now();
                 
-                const response = await fetch("https://api.openai.com/v1/audio/speech", {
+                const response = await fetch("/api/openai/audio/speech", {
                     method: "POST",
                     headers: {
-                        "Authorization": `Bearer ${apiKey}`,
                         "Content-Type": "application/json"
                     },
                     body: JSON.stringify({
@@ -709,6 +735,9 @@ export const generateVoiceOver = async (text: string, voice: OpenAIVoice, onProg
                         console.warn(`[TTS] Rate limit hit for part ${index + 1}. Waiting ${waitTime}ms...`);
                         await new Promise(r => setTimeout(r, waitTime));
                         throw new Error(`RATE_LIMIT`);
+                    }
+                    if (response.status === 401) {
+                        throw new Error("OPENAI_API_KEY_MISSING");
                     }
                     
                     const errData = await response.json().catch(() => ({}));
@@ -816,7 +845,8 @@ export const generateStoryOutline = async (topic: string, durationKey: number): 
             reasoning: { enabled: true }
         });
         const text = res.choices[0].message.content || '{"chapters":[]}';
-        return JSON.parse(text).chapters;
+        const parsed = JSON.parse(text);
+        return parsed.chapters || parsed.outline || parsed.segments || [];
     });
 };
 
@@ -824,6 +854,8 @@ export const generateStoryOutline = async (topic: string, durationKey: number): 
  * OUTLINE AUDITOR (Fact Check & Monetization)
  */
 export const auditStoryOutline = async (outline: ChapterOutline[], topic: string): Promise<ChapterOutline[]> => {
+    if (!outline || !Array.isArray(outline) || outline.length === 0) return [];
+    
     return executeWithRetry(async (client) => {
         const prompt = `You are a professional script editor and YouTube monetization expert. Review this video outline about "${topic}".
         Ensure it is completely factually accurate, educational, and strictly adheres to YouTube 'Green Dollar' monetization policies.
@@ -847,7 +879,8 @@ export const auditStoryOutline = async (outline: ChapterOutline[], topic: string
             reasoning: { enabled: true }
         });
         const text = res.choices[0].message.content || '{"chapters":[]}';
-        return JSON.parse(text).chapters;
+        const parsed = JSON.parse(text);
+        return parsed.chapters || parsed.outline || parsed.segments || [];
     });
 };
 
@@ -873,6 +906,12 @@ Segment ${idx} of ${total}
 
 ${chapterPrompt}
 
+[FORMATTING INSTRUCTIONS]
+- Return ONLY the spoken narration text.
+- DO NOT include any labels like "[Introduction]", "Narrator:", "Visuals:", "Scene:", or "[Chapter]".
+- DO NOT include any stage directions or visual descriptions.
+- The output should be plain text that can be read directly by a voice-over artist.
+
 Summary of Script Architecture (Based on Sources):
 - Intro: Must use a "Grabber" (like the "Mad Honey" hallucinations).
 - Body: Use Categorization (Fresh vs. Aged cheese) to prevent information fatigue.
@@ -894,7 +933,7 @@ ${SAFETY_BLOCK}`;
             reasoning: { enabled: true }
         });
         const text = res.choices[0].message.content || '{"content":"", "summary":""}';
-        return JSON.parse(text);
+        return safeJsonParse(text);
     }, 5);
 };
 
@@ -911,7 +950,7 @@ export const generateVideoMetadata = async (script: string, topic: string): Prom
             response_format: { type: "json_object" }
         });
         const text = response.choices[0].message.content || '{}';
-        return JSON.parse(text);
+        return safeJsonParse(text);
     }, 2);
 
     return `
@@ -948,7 +987,7 @@ export const generateThumbnailPrompt = async (videoTitle: string): Promise<{ tex
         });
 
         const childText = childResponse.choices[0].message.content || '{"detailed_prompt":""}';
-        const childData = JSON.parse(childText);
+        const childData = safeJsonParse(childText);
         const childPrompt = childData.detailed_prompt;
 
         // 2. Construct Master JSON

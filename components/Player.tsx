@@ -201,20 +201,20 @@ const Player: React.FC<PlayerProps> = ({
     let textY = height / 2;
     
     // Determine max width based on layout
-    const maxWidth = layout === 'centered' ? width * 0.75 : (width / 2) - 80;
+    const maxWidth = layout === 'centered' ? width * 0.8 : (width / 2) - 120;
 
     if (layout === 'split-left') {
         ctx.textAlign = 'left';
-        textX = width / 2 + 40; 
+        textX = width / 2 + 60; 
     } else if (layout === 'split-right') {
         ctx.textAlign = 'right';
-        textX = width / 2 - 40; 
+        textX = width / 2 - 60; 
     } else if (layout === 'centered') {
         textY = height * 0.2; // Move text down a bit to avoid top rounded corners
     }
 
     // Dynamic Font Scaling Logic
-    let fontSize = 64;
+    let fontSize = 52;
     ctx.font = `900 ${fontSize}px "Inter", sans-serif`;
     
     // Check if any single word is wider than maxWidth

@@ -57,6 +57,12 @@ const App: React.FC = () => {
     verifyApiKeys().then(count => setKeyCount(count));
   }, []);
 
+  useEffect(() => {
+    if (project.scriptText) {
+      console.log("Script Text Updated. Length:", project.scriptText.length);
+    }
+  }, [project.scriptText]);
+
   const handleAutomatedPipeline = async () => {
       if (!wizardTopic) {
           alert("Please enter a topic first.");
@@ -70,23 +76,41 @@ const App: React.FC = () => {
           const durationKey = await determineScriptFramework(wizardTopic);
           setStatus({ step: 'refining', progress: 5, message: `Step 1: Architecting ${durationKey}-Minute Viral Script...` });
 
-          // 2. Generate Script (Doc Writer)
+           // 2. Generate Script (Doc Writer)
           const rawChapters = await generateStoryOutline(wizardTopic, durationKey);
+          
+          if (!rawChapters || rawChapters.length === 0) {
+              throw new Error("Failed to generate script outline. Please try again.");
+          }
           
           setStatus({ step: 'refining', progress: 8, message: `Auditing Outline for Monetization & Facts...` });
           const chapters = await auditStoryOutline(rawChapters, wizardTopic);
           
-          const fullOutline = chapters.map(c => `${c.title} (${c.wordCount} words): ${c.description}`).join('\n');
+          const finalChapters = (chapters && chapters.length > 0) ? chapters : (rawChapters || []);
+          
+          const fullOutline = (finalChapters || []).map(c => `${c.title} (${c.wordCount} words): ${c.description}`).join('\n');
           let rawFullScript = "";
           let previousSummary = "Start";
-          for (let i = 0; i < chapters.length; i++) {
-              setStatus({ step: 'refining', progress: Math.round(((i + 1) / chapters.length) * 100), message: `Writing Viral Part ${i + 1}/${chapters.length}...` });
-              const { content, summary } = await generateStoryChapter(wizardTopic, chapters[i], previousSummary, fullOutline, i + 1, chapters.length, durationKey);
+          for (let i = 0; i < finalChapters.length; i++) {
+              setStatus({ step: 'refining', progress: Math.round(((i + 1) / finalChapters.length) * 100), message: `Writing Viral Part ${i + 1}/${finalChapters.length}...` });
+              const { content, summary } = await generateStoryChapter(wizardTopic, finalChapters[i], previousSummary, fullOutline, i + 1, finalChapters.length, durationKey);
               rawFullScript += `\n\n${content}`;
               previousSummary = summary;
           }
           const { auditedScript } = await masterAuditScript(rawFullScript, wizardTopic);
-          setProject(prev => ({ ...prev, scriptText: auditedScript.trim(), videoTitle: wizardTopic }));
+          
+          // Clean up any remaining labels just in case
+          const cleanedScript = auditedScript
+            .replace(/\[Introduction\]/gi, '')
+            .replace(/\[Chapter \d+\]/gi, '')
+            .replace(/Narrator:/gi, '')
+            .replace(/Visuals:.*$/gm, '')
+            .replace(/Scene:.*$/gm, '')
+            .replace(/\[.*?\]/g, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+
+          setProject(prev => ({ ...prev, scriptText: cleanedScript, videoTitle: wizardTopic }));
           
           // 2. Generate Scenes First (so we can do per-scene audio sync)
           setStatus({ step: 'generating_scenes', progress: 10, message: 'Step 2: Analyzing Script for Scenes...' });
@@ -109,40 +133,23 @@ const App: React.FC = () => {
           setStatus({ step: 'generating_image_prompts', progress: 30, message: 'Step 4: Generating Image Prompts...' });
 
           // 4. Generate Image Prompts
-          const imagePrompts = await generateImagePrompts(updatedScenes);
-          const scenesWithImagePrompts = updatedScenes.map((s, i) => ({ ...s, imagePrompt: imagePrompts[i] || s.visualDescription }));
+          const imagePrompts = await generateImagePrompts(updatedScenes || []);
+          const scenesWithImagePrompts = (updatedScenes || []).map((s, i) => ({ ...s, imagePrompt: imagePrompts[i] || s.visualDescription }));
           setProject(prev => ({ ...prev, scenes: scenesWithImagePrompts, visualStage: 'image_prompts' }));
           setStatus({ step: 'generating_video_prompts', progress: 50, message: 'Step 5: Generating Video Prompts...' });
 
           // 5. Generate Video Prompts
           const videoPrompts = await generateVideoPrompts(scenesWithImagePrompts);
-          const scenesWithAllPrompts = scenesWithImagePrompts.map((s, i) => ({ ...s, videoPrompt: videoPrompts[i] || "Cinematic motion." }));
+          const scenesWithAllPrompts = (scenesWithImagePrompts || []).map((s, i) => ({ ...s, videoPrompt: videoPrompts[i] || "Cinematic motion." }));
           setProject(prev => ({ ...prev, scenes: scenesWithAllPrompts, visualStage: 'video_prompts' }));
           
-          // 6. Generate Thumbnail
-          setStatus({ step: 'generating_images', progress: 60, message: 'Step 6: Generating Viral Thumbnail...' });
-          const { imageUrl: thumbnailImageUrl } = await generateThumbnailPrompt(wizardTopic);
-          setProject(prev => ({
-              ...prev,
-              generatedThumbnails: [thumbnailImageUrl],
-              thumbnailStudio: { ...prev.thumbnailStudio, generatedImage: thumbnailImageUrl }
-          }));
-          
-          // Download thumbnail automatically
-          const tLink = document.createElement('a');
-          tLink.href = thumbnailImageUrl;
-          tLink.download = `${wizardTopic}_thumbnail.png`;
-          document.body.appendChild(tLink);
-          tLink.click();
-          document.body.removeChild(tLink);
-
-          // 7 & 8. Batch Render Visuals
-          setStatus({ step: 'generating_images', progress: 70, message: 'Step 7: Starting Batch Visual Render...' });
+          // 6 & 7. Batch Render Visuals
+          setStatus({ step: 'generating_images', progress: 70, message: 'Step 6: Starting Batch Visual Render...' });
           await autoBatchRender(scenesWithAllPrompts);
 
-      } catch (e) {
-          console.error(e);
-          setStatus({ step: 'idle', progress: 0, message: 'Automated Pipeline Failed.' });
+      } catch (e: any) {
+          console.error("Automated Pipeline Error:", e);
+          setStatus({ step: 'idle', progress: 0, message: `Automated Pipeline Failed: ${e.message || 'Unknown error'}` });
       }
   };
 
@@ -211,23 +218,49 @@ const App: React.FC = () => {
       try {
           const durationKey = await determineScriptFramework(wizardTopic);
           
+          console.log("Generating outline for:", wizardTopic);
           const rawChapters = await generateStoryOutline(wizardTopic, durationKey);
+          if (!rawChapters || rawChapters.length === 0) {
+              throw new Error("Failed to generate script outline.");
+          }
+          console.log("Raw Chapters:", rawChapters);
+
           setStatus({ step: 'refining', progress: 8, message: `Auditing Outline for Monetization & Facts...` });
           const chapters = await auditStoryOutline(rawChapters, wizardTopic);
           
-          const fullOutline = chapters.map(c => `${c.title} (${c.wordCount} words): ${c.description}`).join('\n');
+          const finalChapters = (chapters && chapters.length > 0) ? chapters : (rawChapters || []);
+          console.log("Final Chapters:", finalChapters);
+
+          const fullOutline = (finalChapters || []).map(c => `${c.title} (${c.wordCount} words): ${c.description}`).join('\n');
           let rawFullScript = "";
           let previousSummary = "Start";
-          for (let i = 0; i < chapters.length; i++) {
-              setStatus({ step: 'refining', progress: Math.round(((i + 1) / chapters.length) * 100), message: `Writing Viral Part ${i + 1}/${chapters.length}...` });
-              const { content, summary } = await generateStoryChapter(wizardTopic, chapters[i], previousSummary, fullOutline, i + 1, chapters.length, durationKey);
+          for (let i = 0; i < finalChapters.length; i++) {
+              setStatus({ step: 'refining', progress: Math.round(((i + 1) / finalChapters.length) * 100), message: `Writing Viral Part ${i + 1}/${finalChapters.length}...` });
+              const { content, summary } = await generateStoryChapter(wizardTopic, finalChapters[i], previousSummary, fullOutline, i + 1, finalChapters.length, durationKey);
               rawFullScript += `\n\n${content}`;
               previousSummary = summary;
           }
+          console.log("Raw Full Script Length:", rawFullScript.length);
           const { auditedScript } = await masterAuditScript(rawFullScript, wizardTopic);
-          setProject(prev => ({ ...prev, scriptText: auditedScript.trim(), videoTitle: wizardTopic, visualStage: 'idle' }));
+          console.log("Audited Script Length:", auditedScript.length);
+          
+          // Clean up any remaining labels just in case
+          const cleanedScript = auditedScript
+            .replace(/\[Introduction\]/gi, '')
+            .replace(/\[Chapter \d+\]/gi, '')
+            .replace(/Narrator:/gi, '')
+            .replace(/Visuals:.*$/gm, '')
+            .replace(/Scene:.*$/gm, '')
+            .replace(/\[.*?\]/g, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+
+          setProject(prev => ({ ...prev, scriptText: cleanedScript, videoTitle: wizardTopic, visualStage: 'idle' }));
           setStatus({ step: 'ready', progress: 100, message: 'Script Generated & Audited.' });
-      } catch (e) { setStatus({ step: 'idle', progress: 0, message: 'Production Error.' }); }
+      } catch (e: any) { 
+          console.error("Production Error:", e);
+          setStatus({ step: 'idle', progress: 0, message: `Production Error: ${e.message || 'Unknown error'}` }); 
+      }
   };
 
   const runGenerateScenes = async () => {
@@ -260,14 +293,14 @@ const App: React.FC = () => {
       setStatus({ step: 'generating_image_prompts', progress: 30, message: `${finalScenes.length} Scenes Generated. Starting Image Prompts...` });
 
       // 2. Generate Image Prompts
-      const imagePrompts = await generateImagePrompts(finalScenes);
-      const scenesWithImagePrompts = finalScenes.map((s, i) => ({ ...s, imagePrompt: imagePrompts[i] || s.visualDescription }));
+      const imagePrompts = await generateImagePrompts(finalScenes || []);
+      const scenesWithImagePrompts = (finalScenes || []).map((s, i) => ({ ...s, imagePrompt: imagePrompts[i] || s.visualDescription }));
       setProject(prev => ({ ...prev, scenes: scenesWithImagePrompts, visualStage: 'image_prompts' }));
       setStatus({ step: 'generating_video_prompts', progress: 50, message: 'Image Prompts Ready. Starting Video Prompts...' });
 
       // 3. Generate Video Prompts
       const videoPrompts = await generateVideoPrompts(scenesWithImagePrompts);
-      const scenesWithAllPrompts = scenesWithImagePrompts.map((s, i) => ({ ...s, videoPrompt: videoPrompts[i] || "Cinematic motion." }));
+      const scenesWithAllPrompts = (scenesWithImagePrompts || []).map((s, i) => ({ ...s, videoPrompt: videoPrompts[i] || "Cinematic motion." }));
       setProject(prev => ({ ...prev, scenes: scenesWithAllPrompts, visualStage: 'video_prompts' }));
       setStatus({ step: 'generating_images', progress: 70, message: 'Prompts Ready. Starting Batch Visual Render...' });
 
@@ -291,8 +324,8 @@ const App: React.FC = () => {
       // to avoid stale state issues during the auto-chain.
       
       // A. Render Images
-      const imageIndices = scenesToRender.map((s, i) => (s.assetType === 'image' || s.assetType === 'video') ? i : -1).filter(i => i !== -1);
-      let scenesAfterImages = [...scenesToRender];
+      const imageIndices = (scenesToRender || []).map((s, i) => (s.assetType === 'image' || s.assetType === 'video') ? i : -1).filter(i => i !== -1);
+      let scenesAfterImages = [...(scenesToRender || [])];
       
       if (imageIndices.length > 0) {
           setStatus({ step: 'generating_images', progress: 70, message: `Auto-Rendering ${imageIndices.length} Base Images...` });
@@ -323,7 +356,7 @@ const App: React.FC = () => {
       }
 
       // B. Render Videos (for scenes marked as 'video')
-      const videoIndices = scenesAfterImages.map((s, i) => (s.assetType === 'video') ? i : -1).filter(i => i !== -1);
+      const videoIndices = (scenesAfterImages || []).map((s, i) => (s.assetType === 'video') ? i : -1).filter(i => i !== -1);
       
       if (videoIndices.length > 0) {
           setStatus({ step: 'generating_videos', progress: 85, message: `Auto-Rendering ${videoIndices.length} Video Clips...` });
@@ -366,7 +399,7 @@ const App: React.FC = () => {
       setProject(prev => ({
         ...prev,
         visualStage: 'image_prompts',
-        scenes: prev.scenes.map((s, i) => ({ ...s, imagePrompt: prompts[i] || s.visualDescription }))
+        scenes: (prev.scenes || []).map((s, i) => ({ ...s, imagePrompt: prompts[i] || s.visualDescription }))
       }));
       setStatus({ step: 'ready', progress: 100, message: 'Image Prompts Generated.' });
     } catch (e) { setStatus({ step: 'idle', progress: 0, message: 'Prompt Generation Failed.' }); }
@@ -380,7 +413,7 @@ const App: React.FC = () => {
       setProject(prev => ({
         ...prev,
         visualStage: 'video_prompts',
-        scenes: prev.scenes.map((s, i) => ({ ...s, videoPrompt: prompts[i] || "Cinematic motion." }))
+        scenes: (prev.scenes || []).map((s, i) => ({ ...s, videoPrompt: prompts[i] || "Cinematic motion." }))
       }));
       setStatus({ step: 'ready', progress: 100, message: 'Video Prompts Generated.' });
     } catch (e) { setStatus({ step: 'idle', progress: 0, message: 'Video Prompt Generation Failed.' }); }
@@ -403,7 +436,7 @@ const App: React.FC = () => {
       }
       setProject(prev => {
           if (prev.scenes.length === 0) { alert("Generate storyboard first."); return prev; }
-          const updatedScenes = prev.scenes.map((scene, i) => i < imageData.length ? { ...scene, imageUrl: imageData[i] } : scene);
+          const updatedScenes = (prev.scenes || []).map((scene, i) => i < imageData.length ? { ...scene, imageUrl: imageData[i] } : scene);
           return { ...prev, scenes: updatedScenes };
       });
       setStatus({ step: 'ready', progress: 100, message: 'Import Complete!' });
@@ -417,7 +450,7 @@ const App: React.FC = () => {
       
       setProject(prev => {
           if (prev.scenes.length === 0) { alert("Please generate scenes first."); return prev; }
-          const updatedScenes = prev.scenes.map((scene, i) => {
+          const updatedScenes = (prev.scenes || []).map((scene, i) => {
               if (i < fileList.length) {
                   return { ...scene, videoClipUrl: URL.createObjectURL(fileList[i]) };
               }
@@ -431,7 +464,7 @@ const App: React.FC = () => {
   const handleUpdateScene = (id: string, updates: Partial<Scene>) => {
     setProject(prev => ({
       ...prev,
-      scenes: prev.scenes.map(s => s.id === id ? { ...s, ...updates } : s)
+      scenes: (prev.scenes || []).map(s => s.id === id ? { ...s, ...updates } : s)
     }));
   };
 
@@ -475,7 +508,7 @@ const App: React.FC = () => {
     if (project.scenes.length === 0) return;
     
     // Identify indices of scenes that need processing
-    const indicesToProcess = project.scenes
+    const indicesToProcess = (project.scenes || [])
         .map((s, i) => (s.assetType === 'image' && !s.imageUrl) ? i : -1)
         .filter(i => i !== -1);
 
@@ -545,7 +578,7 @@ const App: React.FC = () => {
   const handleBatchRenderVideos = async () => {
     if (project.scenes.length === 0) return;
     
-    const indicesToProcess = project.scenes
+    const indicesToProcess = (project.scenes || [])
         .map((s, i) => (s.assetType === 'video' && !s.videoUrl) ? i : -1)
         .filter(i => i !== -1);
 
@@ -638,10 +671,20 @@ const App: React.FC = () => {
     
     for (let i = 0; i < imagesToDownload.length; i++) {
         const scene = imagesToDownload[i];
-        const base64Data = scene.imageUrl!.split(',')[1];
-        const mimeType = scene.imageUrl!.split(',')[0].split(':')[1].split(';')[0];
-        const extension = mimeType.split('/')[1] || 'png';
-        imgFolder?.file(`scene_${i + 1}.${extension}`, base64Data, { base64: true });
+        if (scene.imageUrl!.startsWith('data:image')) {
+            const base64Data = scene.imageUrl!.split(',')[1];
+            const mimeType = scene.imageUrl!.split(',')[0].split(':')[1].split(';')[0];
+            const extension = mimeType.split('/')[1] || 'png';
+            imgFolder?.file(`scene_${i + 1}.${extension}`, base64Data, { base64: true });
+        } else if (scene.imageUrl!.startsWith('http')) {
+            try {
+                const response = await fetch(`/api/proxy/image?url=${encodeURIComponent(scene.imageUrl!)}`);
+                const blob = await response.blob();
+                imgFolder?.file(`scene_${i + 1}.png`, blob);
+            } catch (e) {
+                console.error(`Failed to fetch image for scene ${i + 1}`, e);
+            }
+        }
         setStatus({ step: 'refining', progress: Math.round((i / imagesToDownload.length) * 100), message: `Adding Image ${i + 1}/${imagesToDownload.length} to ZIP...` });
     }
     
@@ -735,7 +778,7 @@ const App: React.FC = () => {
             e.preventDefault();
             // In a real app, this would be an environment variable like import.meta.env.VITE_APP_PASSWORD
             // For this setup, we check against a hardcoded string or env var
-            const correctPassword = import.meta.env.VITE_APP_PASSWORD || 'VideoMaker2026!';
+            const correctPassword = (import.meta as any).env.VITE_APP_PASSWORD || 'VideoMaker2026!';
             if (passwordInput === correctPassword) {
               setIsAuthenticated(true);
             } else {
@@ -924,7 +967,7 @@ const App: React.FC = () => {
           <section className="bg-gray-900 p-8 rounded-2xl border border-gray-800 shadow-xl">
             <h3 className="text-lg font-semibold text-brand-400 mb-6">Production Manager ({project.scenes.length} Scenes)</h3>
             <div className="grid grid-cols-1 gap-6">
-              {project.scenes.map((scene, index) => (
+              {(project.scenes || []).map((scene, index) => (
                   <SceneEditor 
                     key={scene.id} 
                     scene={scene} 
@@ -933,7 +976,10 @@ const App: React.FC = () => {
                     onUpdate={(updates) => handleUpdateScene(scene.id, updates)}
                     onRetry={(prompt) => handleRetryScene(scene.id, prompt)}
                     onRetryVideo={(prompt) => handleRetryVideo(scene.id, prompt)}
-                    onPreview={() => setPreviewScene(scene)}
+                    onPreview={() => {
+                      if (status.step !== 'idle' && status.step !== 'ready') return;
+                      setPreviewScene(scene);
+                    }}
                   />
               ))}
             </div>
@@ -967,6 +1013,12 @@ const App: React.FC = () => {
       )}
       {previewScene && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex items-center justify-center p-10" onClick={() => setPreviewScene(null)}>
+          <button 
+            onClick={(e) => { e.stopPropagation(); setPreviewScene(null); }}
+            className="absolute top-10 right-10 w-12 h-12 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-full text-white text-2xl transition-all z-[110]"
+          >
+            &times;
+          </button>
           {previewScene.videoUrl ? (
             <video src={previewScene.videoUrl} controls autoPlay className="max-w-full max-h-full rounded-xl shadow-2xl border border-gray-800" />
           ) : previewScene.videoClipUrl ? (
@@ -1023,7 +1075,7 @@ const SceneEditor: React.FC<{
             <textarea 
               value={scene.visualDescription} 
               onChange={(e) => onUpdate({ visualDescription: e.target.value })}
-              className="w-full bg-gray-900 border border-gray-800 rounded p-2 text-xs focus:border-brand-500 outline-none h-16"
+              className="w-full bg-gray-900 border border-gray-800 rounded p-3 text-[10px] focus:border-brand-500 outline-none h-16"
             />
           </div>
           <div className="text-[10px] text-gray-500 font-mono text-right shrink-0">
@@ -1034,11 +1086,10 @@ const SceneEditor: React.FC<{
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest mb-1 block">Overlay Text</label>
-            <input 
-              type="text"
+            <textarea 
               value={scene.overlayText || ""} 
               onChange={(e) => onUpdate({ overlayText: e.target.value })}
-              className="w-full bg-gray-900 border border-gray-800 rounded p-2 text-xs focus:border-brand-500 outline-none"
+              className="w-full bg-gray-900 border border-gray-800 rounded p-3 text-[10px] focus:border-brand-500 outline-none h-16"
               placeholder="Text to show on screen..."
             />
           </div>
@@ -1061,7 +1112,7 @@ const SceneEditor: React.FC<{
           <textarea 
             value={scene.imagePrompt || ""} 
             onChange={(e) => onUpdate({ imagePrompt: e.target.value })}
-            className="w-full bg-gray-900/50 border border-indigo-900 rounded p-2 text-[11px] focus:border-brand-500 outline-none h-20 text-indigo-100"
+            className="w-full bg-gray-900/50 border border-indigo-900 rounded p-3 text-[10px] focus:border-brand-500 outline-none h-20 text-indigo-100"
             placeholder="Enter image prompt..."
           />
         </div>
@@ -1071,7 +1122,7 @@ const SceneEditor: React.FC<{
           <textarea 
             value={scene.videoPrompt || ""} 
             onChange={(e) => onUpdate({ videoPrompt: e.target.value })}
-            className="w-full bg-gray-900/50 border border-amber-900/50 rounded p-2 text-[11px] focus:border-brand-500 outline-none h-20 text-amber-100"
+            className="w-full bg-gray-900/50 border border-amber-900/50 rounded p-3 text-[10px] focus:border-brand-500 outline-none h-20 text-amber-100"
             placeholder="Enter video motion prompt..."
           />
         </div>
