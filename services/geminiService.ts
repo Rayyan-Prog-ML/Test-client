@@ -17,35 +17,6 @@ export const STYLE_KEYWORDS = "Minimalist editorial design, pure white backgroun
 export const SAFETY_BLOCK = "STRICT YOUTUBE AD POLICY COMPLIANCE: No profanity, nudity, or graphic battlefield gore. Maintain a respectful educational tone. Maintain facts checks. Ensure the language is safe for 'Green Dollar' monetization, avoiding content that promotes dangerous, unhealthy eating habits, or eating disorders.";
 
 /**
- * Helper to safely parse potentially truncated JSON from LLM responses
- */
-function safeJsonParse(text: string): any {
-    try {
-        return JSON.parse(text);
-    } catch (e: any) {
-        console.warn("JSON parse failed, attempting to repair truncated JSON...", e.message);
-        
-        let repaired = text;
-        // Try to find the last complete object in the array
-        const lastBrace = repaired.lastIndexOf('}');
-        if (lastBrace > -1) {
-            repaired = repaired.substring(0, lastBrace + 1);
-            try { return JSON.parse(repaired + ']}'); } catch(e2) {}
-            try { return JSON.parse(repaired + '}]}'); } catch(e2) {}
-            try { return JSON.parse(repaired + ']'); } catch(e2) {}
-            try { return JSON.parse(repaired + '}'); } catch(e2) {}
-        }
-        
-        // Try to close string and object
-        try { return JSON.parse(text + '"]}'); } catch(e4) {}
-        try { return JSON.parse(text + '"}'); } catch(e4) {}
-        try { return JSON.parse(text + '"]}]}'); } catch(e4) {}
-        
-        throw e; // If all repairs fail, throw the original error
-    }
-}
-
-/**
  * CONCURRENCY CONTROLLER & JITTER ENGINE
  * Prevents API rate limiting by managing request flow.
  */
@@ -180,7 +151,7 @@ export const generateScenes = async (script: string, totalDuration: number): Pro
     });
 
     const text = response.choices[0].message.content || '{"scenes":[]}';
-    const data = safeJsonParse(text);
+    const data = JSON.parse(text);
     const rawScenes = data.scenes || [];
     
     // Calculate timing based on word count of each segment for "natural" allocation
@@ -243,7 +214,7 @@ export const generateImagePrompts = async (scenes: Scene[]): Promise<string[]> =
       response_format: { type: "json_object" }
     });
     const text = response.choices[0].message.content || '{"prompts":[]}';
-    const data = safeJsonParse(text);
+    const data = JSON.parse(text);
     return Array.isArray(data.prompts) ? data.prompts : [];
   }, 2);
 };
@@ -252,6 +223,12 @@ export const generateImagePrompts = async (scenes: Scene[]): Promise<string[]> =
  * Stage 3: Video Prompts:)
  */
 export const generateVideoPrompts = async (scenes: Scene[]): Promise<string[]> => {
+  const videoScenes = scenes.map((s, i) => ({ scene: s, index: i })).filter(x => x.scene.assetType === 'video');
+  
+  if (videoScenes.length === 0) {
+    return scenes.map(() => "");
+  }
+
   return await executeWithRetry(async (client) => {
     const response = await client.chat.completions.create({
       model: "google/gemini-2.0-flash-001", 
@@ -272,14 +249,21 @@ export const generateVideoPrompts = async (scenes: Scene[]): Promise<string[]> =
         },
         {
           role: "user",
-          content: `SCENES: ${JSON.stringify(scenes.map(s => s.imagePrompt || s.visualDescription))}`
+          content: `SCENES: ${JSON.stringify(videoScenes.map(x => x.scene.imagePrompt || x.scene.visualDescription))}`
         }
       ],
       response_format: { type: "json_object" }
     });
     const text = response.choices[0].message.content || '{"videoPrompts":[]}';
-    const data = safeJsonParse(text);
-    return Array.isArray(data.videoPrompts) ? data.videoPrompts : [];
+    const data = JSON.parse(text);
+    const generatedPrompts = Array.isArray(data.videoPrompts) ? data.videoPrompts : [];
+    
+    const finalPrompts = new Array(scenes.length).fill("");
+    videoScenes.forEach((vs, idx) => {
+      finalPrompts[vs.index] = generatedPrompts[idx] || "Cinematic motion.";
+    });
+    
+    return finalPrompts;
   }, 2);
 };
 
@@ -430,7 +414,7 @@ export const masterAuditScript = async (script: string, topic: string): Promise<
       reasoning: { enabled: true }
     });
     const text = response.choices[0].message.content || '{"patches":[], "summaryOfChanges":""}';
-    return safeJsonParse(text);
+    return JSON.parse(text);
   }, 2);
 
   let finalScript = script;
@@ -933,7 +917,7 @@ ${SAFETY_BLOCK}`;
             reasoning: { enabled: true }
         });
         const text = res.choices[0].message.content || '{"content":"", "summary":""}';
-        return safeJsonParse(text);
+        return JSON.parse(text);
     }, 5);
 };
 
@@ -950,7 +934,7 @@ export const generateVideoMetadata = async (script: string, topic: string): Prom
             response_format: { type: "json_object" }
         });
         const text = response.choices[0].message.content || '{}';
-        return safeJsonParse(text);
+        return JSON.parse(text);
     }, 2);
 
     return `
@@ -987,7 +971,7 @@ export const generateThumbnailPrompt = async (videoTitle: string): Promise<{ tex
         });
 
         const childText = childResponse.choices[0].message.content || '{"detailed_prompt":""}';
-        const childData = safeJsonParse(childText);
+        const childData = JSON.parse(childText);
         const childPrompt = childData.detailed_prompt;
 
         // 2. Construct Master JSON
