@@ -198,7 +198,7 @@ const Player: React.FC<PlayerProps> = ({
     ctx.lineJoin = 'round';
     
     let textX = width / 2;
-    let textY = height * 0.42; // Move base position up to avoid being "too much below"
+    let textY = height * 0.3; // Move base position significantly up
     
     // Determine max width based on layout
     const cardPadding = 40;
@@ -217,8 +217,8 @@ const Player: React.FC<PlayerProps> = ({
         ctx.textAlign = 'right';
         textX = width / 2 - 60; 
     } else if (layout === 'centered') {
-        // Position text higher in the card for better visibility and less bottom-heaviness
-        textY = height / 2 - cardSize / 3.2; 
+        // Position text near the top of the card for maximum visibility
+        textY = height / 2 - cardSize / 2 + 100; 
     }
 
     // Dynamic Font Scaling Logic
