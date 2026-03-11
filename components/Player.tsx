@@ -201,7 +201,14 @@ const Player: React.FC<PlayerProps> = ({
     let textY = height / 2;
     
     // Determine max width based on layout
-    const maxWidth = layout === 'centered' ? width * 0.8 : (width / 2) - 120;
+    const cardPadding = 40;
+    const availableWidth = (layout === 'centered' ? width : width / 2) - cardPadding * 2;
+    const availableHeight = height - cardPadding * 2;
+    const cardSize = Math.min(availableWidth, availableHeight);
+    
+    // Padding for the text inside the box (if centered) or area
+    const textPadding = 80;
+    const maxWidth = layout === 'centered' ? cardSize - textPadding : (width / 2) - 120;
 
     if (layout === 'split-left') {
         ctx.textAlign = 'left';
@@ -210,7 +217,8 @@ const Player: React.FC<PlayerProps> = ({
         ctx.textAlign = 'right';
         textX = width / 2 - 60; 
     } else if (layout === 'centered') {
-        textY = height * 0.2; // Move text down a bit to avoid top rounded corners
+        // Position text in the upper third of the card for better visibility
+        textY = height / 2 - cardSize / 4; 
     }
 
     // Dynamic Font Scaling Logic
@@ -249,8 +257,9 @@ const Player: React.FC<PlayerProps> = ({
     const totalHeight = lines.length * lineHeight;
     let startY = textY - (totalHeight / 2) + (lineHeight / 2);
 
-    // Ensure text doesn't overflow the top of the canvas
-    const minPaddingTop = height * 0.05 + (lineHeight / 2);
+    // Ensure text doesn't overflow the top of the card (if centered) or canvas
+    const boxTop = layout === 'centered' ? height / 2 - cardSize / 2 : height * 0.05;
+    const minPaddingTop = boxTop + (lineHeight / 2) + 20;
     if (startY < minPaddingTop) {
         startY = minPaddingTop;
     }
