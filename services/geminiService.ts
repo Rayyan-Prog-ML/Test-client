@@ -152,24 +152,30 @@ export const generateScenes = async (script: string, totalDuration: number): Pro
 
     const text = response.choices[0].message.content || '{"scenes":[]}';
     const data = JSON.parse(text);
-    const rawScenes = data.scenes || [];
+    const rawScenes = Array.isArray(data.scenes) ? data.scenes : [];
     
     // Calculate timing based on word count of each segment for "natural" allocation
-    const totalWords = rawScenes.reduce((acc: number, s: any) => acc + (s.scriptSegment?.split(/\s+/).length || 0), 0);
+    const totalWords = rawScenes.reduce((acc: number, s: any) => {
+        const segment = typeof s.scriptSegment === 'string' ? s.scriptSegment : (s.scriptSegment?.text || "");
+        return acc + (segment.split(/\s+/).length || 0);
+    }, 0);
     let currentStartTime = 0;
 
     return rawScenes.map((s: any, i: number) => {
-      const wordCount = s.scriptSegment?.split(/\s+/).length || 0;
+      const scriptSegment = typeof s.scriptSegment === 'string' ? s.scriptSegment : (s.scriptSegment?.text || s.scriptSegment?.content || JSON.stringify(s.scriptSegment || ""));
+      const visualDescription = typeof s.visualDescription === 'string' ? s.visualDescription : (s.visualDescription?.prompt || s.visualDescription?.text || s.visualDescription?.description || JSON.stringify(s.visualDescription || ""));
+      
+      const wordCount = scriptSegment.split(/\s+/).length || 0;
       const duration = totalWords > 0 ? (wordCount / totalWords) * totalDuration : totalDuration / Math.max(1, rawScenes.length);
       
       const scene: Scene = {
         id: `scene-${i}-${Date.now()}`,
-        scriptSegment: s.scriptSegment || '',
-        visualDescription: s.visualDescription || '',
+        scriptSegment: scriptSegment,
+        visualDescription: visualDescription,
         transitionType: s.transitionType || 'standard',
         assetType: s.assetType || 'image',
         layout: s.layout || 'centered',
-        overlayText: (s.overlayText || '').replace(/\*\*/g, ''),
+        overlayText: (typeof s.overlayText === 'string' ? s.overlayText : (s.overlayText?.text || String(s.overlayText || ""))).replace(/\*\*/g, ''),
         isLoopable: s.isLoopable || false,
         startTime: currentStartTime,
         endTime: currentStartTime + duration,
@@ -215,7 +221,16 @@ export const generateImagePrompts = async (scenes: Scene[]): Promise<string[]> =
     });
     const text = response.choices[0].message.content || '{"prompts":[]}';
     const data = JSON.parse(text);
-    return Array.isArray(data.prompts) ? data.prompts : [];
+    const rawPrompts = Array.isArray(data.prompts) ? data.prompts : [];
+    
+    // Ensure we return an array of strings, even if the model returned objects
+    return rawPrompts.map((p: any) => {
+        if (typeof p === 'string') return p;
+        if (typeof p === 'object' && p !== null) {
+            return p.prompt || p.text || p.description || JSON.stringify(p);
+        }
+        return String(p);
+    });
   }, 2);
 };
 
@@ -256,7 +271,16 @@ export const generateVideoPrompts = async (scenes: Scene[]): Promise<string[]> =
     });
     const text = response.choices[0].message.content || '{"videoPrompts":[]}';
     const data = JSON.parse(text);
-    const generatedPrompts = Array.isArray(data.videoPrompts) ? data.videoPrompts : [];
+    const rawVideoPrompts = Array.isArray(data.videoPrompts) ? data.videoPrompts : [];
+    
+    // Ensure we return an array of strings
+    const generatedPrompts = rawVideoPrompts.map((p: any) => {
+        if (typeof p === 'string') return p;
+        if (typeof p === 'object' && p !== null) {
+            return p.prompt || p.text || p.description || JSON.stringify(p);
+        }
+        return String(p);
+    });
     
     const finalPrompts = new Array(scenes.length).fill("");
     videoScenes.forEach((vs, idx) => {
