@@ -92,8 +92,7 @@ app.post("/api/wavespeed/image", async (req, res) => {
     const result = await client.run("wavespeed-ai/flux-schnell", {
       prompt,
       aspect_ratio,
-      num_images: 1,
-      output_format: "jpeg"
+      num_images: 1
     });
 
     if (result && result.outputs && result.outputs.length > 0) {

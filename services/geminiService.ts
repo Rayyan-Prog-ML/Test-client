@@ -306,39 +306,48 @@ export const generateImageForScene = async (description: string, aspectRatio: As
 };
 
 const generateImageWithOpenRouter = async (description: string, aspectRatio: AspectRatio): Promise<string> => {
-    const finalPrompt = `STYLE: ${STYLE_KEYWORDS} SCENE: ${description}. ${SAFETY_BLOCK}`;
-    
     console.warn("OpenRouter image generation not supported. Using Pollinations.ai as a free fallback.");
     
     const width = aspectRatio === '16:9' ? 1280 : aspectRatio === '9:16' ? 720 : 1024;
     const height = aspectRatio === '16:9' ? 720 : aspectRatio === '9:16' ? 1280 : 1024;
     
-    const truncatedPrompt = finalPrompt.length > 1500 ? finalPrompt.substring(0, 1500) : finalPrompt;
-    const encodedPrompt = encodeURIComponent(truncatedPrompt);
+    // For Pollinations, we need to keep the prompt short to avoid URI Too Long errors.
+    // We prioritize the actual description over the style/safety blocks.
+    const shortStyle = "Minimalist editorial design, pure white background, sharp focus.";
+    const truncatedDesc = description.length > 300 ? description.substring(0, 300) : description;
+    const finalPrompt = `${shortStyle} SCENE: ${truncatedDesc}`;
+    
+    const encodedPrompt = encodeURIComponent(finalPrompt);
     const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&nologo=true`;
     
-    try {
-        const response = await fetch(imageUrl);
-        if (!response.ok) throw new Error("Failed to fetch image from Pollinations");
-        
-        const contentType = response.headers.get("content-type");
-        if (!contentType || !contentType.startsWith("image/")) {
-            throw new Error("Pollinations did not return an image");
+    let retries = 3;
+    while (retries > 0) {
+        try {
+            const response = await fetch(imageUrl);
+            if (!response.ok) throw new Error(`Failed to fetch image from Pollinations: ${response.status}`);
+            
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.startsWith("image/")) {
+                throw new Error("Pollinations did not return an image");
+            }
+            
+            const blob = await response.blob();
+            const base64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+            
+            return base64;
+        } catch (e) {
+            console.error(`Pollinations fallback failed (retries left: ${retries - 1}):`, e);
+            retries--;
+            if (retries === 0) throw new Error("IMAGE_GENERATION_FAILED");
+            await new Promise(r => setTimeout(r, 2000));
         }
-        
-        const blob = await response.blob();
-        const base64 = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-        
-        return base64;
-    } catch (e) {
-        console.error("Pollinations fallback failed:", e);
-        throw new Error("IMAGE_GENERATION_FAILED");
     }
+    throw new Error("IMAGE_GENERATION_FAILED");
 };
 
 /**
