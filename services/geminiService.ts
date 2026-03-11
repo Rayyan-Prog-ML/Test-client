@@ -17,6 +17,35 @@ export const STYLE_KEYWORDS = "Minimalist editorial design, pure white backgroun
 export const SAFETY_BLOCK = "STRICT YOUTUBE AD POLICY COMPLIANCE: No profanity, nudity, or graphic battlefield gore. Maintain a respectful educational tone. Maintain facts checks. Ensure the language is safe for 'Green Dollar' monetization, avoiding content that promotes dangerous, unhealthy eating habits, or eating disorders.";
 
 /**
+ * Helper to safely parse potentially truncated JSON from LLM responses
+ */
+function safeJsonParse(text: string): any {
+    try {
+        return JSON.parse(text);
+    } catch (e: any) {
+        console.warn("JSON parse failed, attempting to repair truncated JSON...", e.message);
+        
+        let repaired = text;
+        // Try to find the last complete object in the array
+        const lastBrace = repaired.lastIndexOf('}');
+        if (lastBrace > -1) {
+            repaired = repaired.substring(0, lastBrace + 1);
+            try { return JSON.parse(repaired + ']}'); } catch(e2) {}
+            try { return JSON.parse(repaired + '}]}'); } catch(e2) {}
+            try { return JSON.parse(repaired + ']'); } catch(e2) {}
+            try { return JSON.parse(repaired + '}'); } catch(e2) {}
+        }
+        
+        // Try to close string and object
+        try { return JSON.parse(text + '"]}'); } catch(e4) {}
+        try { return JSON.parse(text + '"}'); } catch(e4) {}
+        try { return JSON.parse(text + '"]}]}'); } catch(e4) {}
+        
+        throw e; // If all repairs fail, throw the original error
+    }
+}
+
+/**
  * CONCURRENCY CONTROLLER & JITTER ENGINE
  * Prevents API rate limiting by managing request flow.
  */
@@ -151,7 +180,7 @@ export const generateScenes = async (script: string, totalDuration: number): Pro
     });
 
     const text = response.choices[0].message.content || '{"scenes":[]}';
-    const data = JSON.parse(text);
+    const data = safeJsonParse(text);
     const rawScenes = data.scenes || [];
     
     // Calculate timing based on word count of each segment for "natural" allocation
@@ -214,7 +243,7 @@ export const generateImagePrompts = async (scenes: Scene[]): Promise<string[]> =
       response_format: { type: "json_object" }
     });
     const text = response.choices[0].message.content || '{"prompts":[]}';
-    const data = JSON.parse(text);
+    const data = safeJsonParse(text);
     return Array.isArray(data.prompts) ? data.prompts : [];
   }, 2);
 };
@@ -223,12 +252,6 @@ export const generateImagePrompts = async (scenes: Scene[]): Promise<string[]> =
  * Stage 3: Video Prompts:)
  */
 export const generateVideoPrompts = async (scenes: Scene[]): Promise<string[]> => {
-  const videoScenes = scenes.map((s, i) => ({ scene: s, index: i })).filter(x => x.scene.assetType === 'video');
-  
-  if (videoScenes.length === 0) {
-    return scenes.map(() => "");
-  }
-
   return await executeWithRetry(async (client) => {
     const response = await client.chat.completions.create({
       model: "google/gemini-2.0-flash-001", 
@@ -249,21 +272,14 @@ export const generateVideoPrompts = async (scenes: Scene[]): Promise<string[]> =
         },
         {
           role: "user",
-          content: `SCENES: ${JSON.stringify(videoScenes.map(x => x.scene.imagePrompt || x.scene.visualDescription))}`
+          content: `SCENES: ${JSON.stringify(scenes.map(s => s.imagePrompt || s.visualDescription))}`
         }
       ],
       response_format: { type: "json_object" }
     });
     const text = response.choices[0].message.content || '{"videoPrompts":[]}';
-    const data = JSON.parse(text);
-    const generatedPrompts = Array.isArray(data.videoPrompts) ? data.videoPrompts : [];
-    
-    const finalPrompts = new Array(scenes.length).fill("");
-    videoScenes.forEach((vs, idx) => {
-      finalPrompts[vs.index] = generatedPrompts[idx] || "Cinematic motion.";
-    });
-    
-    return finalPrompts;
+    const data = safeJsonParse(text);
+    return Array.isArray(data.videoPrompts) ? data.videoPrompts : [];
   }, 2);
 };
 
@@ -306,48 +322,33 @@ export const generateImageForScene = async (description: string, aspectRatio: As
 };
 
 const generateImageWithOpenRouter = async (description: string, aspectRatio: AspectRatio): Promise<string> => {
+    const finalPrompt = `STYLE: ${STYLE_KEYWORDS} SCENE: ${description}. ${SAFETY_BLOCK}`;
+    
     console.warn("OpenRouter image generation not supported. Using Pollinations.ai as a free fallback.");
     
     const width = aspectRatio === '16:9' ? 1280 : aspectRatio === '9:16' ? 720 : 1024;
     const height = aspectRatio === '16:9' ? 720 : aspectRatio === '9:16' ? 1280 : 1024;
     
-    // For Pollinations, we need to keep the prompt short to avoid URI Too Long errors.
-    // We prioritize the actual description over the style/safety blocks.
-    const shortStyle = "Minimalist editorial design, pure white background, sharp focus.";
-    const truncatedDesc = description.length > 300 ? description.substring(0, 300) : description;
-    const finalPrompt = `${shortStyle} SCENE: ${truncatedDesc}`;
-    
     const encodedPrompt = encodeURIComponent(finalPrompt);
     const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&nologo=true`;
     
-    let retries = 3;
-    while (retries > 0) {
-        try {
-            const response = await fetch(imageUrl);
-            if (!response.ok) throw new Error(`Failed to fetch image from Pollinations: ${response.status}`);
-            
-            const contentType = response.headers.get("content-type");
-            if (!contentType || !contentType.startsWith("image/")) {
-                throw new Error("Pollinations did not return an image");
-            }
-            
-            const blob = await response.blob();
-            const base64 = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
-            
-            return base64;
-        } catch (e) {
-            console.error(`Pollinations fallback failed (retries left: ${retries - 1}):`, e);
-            retries--;
-            if (retries === 0) throw new Error("IMAGE_GENERATION_FAILED");
-            await new Promise(r => setTimeout(r, 2000));
-        }
+    try {
+        const response = await fetch(imageUrl);
+        if (!response.ok) throw new Error("Failed to fetch image from Pollinations");
+        
+        const blob = await response.blob();
+        const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+        
+        return base64;
+    } catch (e) {
+        console.error("Pollinations fallback failed:", e);
+        throw new Error("IMAGE_GENERATION_FAILED");
     }
-    throw new Error("IMAGE_GENERATION_FAILED");
 };
 
 /**
@@ -429,7 +430,7 @@ export const masterAuditScript = async (script: string, topic: string): Promise<
       reasoning: { enabled: true }
     });
     const text = response.choices[0].message.content || '{"patches":[], "summaryOfChanges":""}';
-    return JSON.parse(text);
+    return safeJsonParse(text);
   }, 2);
 
   let finalScript = script;
@@ -932,7 +933,7 @@ ${SAFETY_BLOCK}`;
             reasoning: { enabled: true }
         });
         const text = res.choices[0].message.content || '{"content":"", "summary":""}';
-        return JSON.parse(text);
+        return safeJsonParse(text);
     }, 5);
 };
 
@@ -949,7 +950,7 @@ export const generateVideoMetadata = async (script: string, topic: string): Prom
             response_format: { type: "json_object" }
         });
         const text = response.choices[0].message.content || '{}';
-        return JSON.parse(text);
+        return safeJsonParse(text);
     }, 2);
 
     return `
@@ -986,7 +987,7 @@ export const generateThumbnailPrompt = async (videoTitle: string): Promise<{ tex
         });
 
         const childText = childResponse.choices[0].message.content || '{"detailed_prompt":""}';
-        const childData = JSON.parse(childText);
+        const childData = safeJsonParse(childText);
         const childPrompt = childData.detailed_prompt;
 
         // 2. Construct Master JSON

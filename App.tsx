@@ -140,7 +140,7 @@ const App: React.FC = () => {
 
           // 5. Generate Video Prompts
           const videoPrompts = await generateVideoPrompts(scenesWithImagePrompts);
-          const scenesWithAllPrompts = (scenesWithImagePrompts || []).map((s, i) => ({ ...s, videoPrompt: videoPrompts[i] || (s.assetType === 'video' ? "Cinematic motion." : "") }));
+          const scenesWithAllPrompts = (scenesWithImagePrompts || []).map((s, i) => ({ ...s, videoPrompt: videoPrompts[i] || "Cinematic motion." }));
           setProject(prev => ({ ...prev, scenes: scenesWithAllPrompts, visualStage: 'video_prompts' }));
           
           // 6 & 7. Batch Render Visuals
@@ -300,7 +300,7 @@ const App: React.FC = () => {
 
       // 3. Generate Video Prompts
       const videoPrompts = await generateVideoPrompts(scenesWithImagePrompts);
-      const scenesWithAllPrompts = (scenesWithImagePrompts || []).map((s, i) => ({ ...s, videoPrompt: videoPrompts[i] || (s.assetType === 'video' ? "Cinematic motion." : "") }));
+      const scenesWithAllPrompts = (scenesWithImagePrompts || []).map((s, i) => ({ ...s, videoPrompt: videoPrompts[i] || "Cinematic motion." }));
       setProject(prev => ({ ...prev, scenes: scenesWithAllPrompts, visualStage: 'video_prompts' }));
       setStatus({ step: 'generating_images', progress: 70, message: 'Prompts Ready. Starting Batch Visual Render...' });
 
@@ -333,7 +333,6 @@ const App: React.FC = () => {
           const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
           const getJitter = (min = 500, max = 2000) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-          let completedImages = 0;
           for (let i = 0; i < imageIndices.length; i += BATCH_SIZE) {
               const batch = imageIndices.slice(i, i + BATCH_SIZE);
               await Promise.all(batch.map(async (index) => {
@@ -351,13 +350,6 @@ const App: React.FC = () => {
                           return { ...prev, scenes: newScenes };
                       });
                   } catch (e) { console.error(e); }
-                  
-                  completedImages++;
-                  setStatus({ 
-                      step: 'generating_images', 
-                      progress: 70 + Math.round((completedImages / imageIndices.length) * 15), 
-                      message: `Auto-Rendering Images... (${completedImages}/${imageIndices.length})` 
-                  });
               }));
               if (i + BATCH_SIZE < imageIndices.length) await delay(getJitter(1000, 2500));
           }
@@ -372,7 +364,6 @@ const App: React.FC = () => {
           const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
           const getJitter = (min = 500, max = 2000) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-          let completedVideos = 0;
           for (let i = 0; i < videoIndices.length; i += BATCH_SIZE) {
               const batch = videoIndices.slice(i, i + BATCH_SIZE);
               await Promise.all(batch.map(async (index) => {
@@ -381,7 +372,7 @@ const App: React.FC = () => {
                       const scene = scenesAfterImages[index];
                       if (!scene.imageUrl) return; // Should have been generated in step A
                       
-                      const prompt = scene.videoPrompt || (scene.assetType === 'video' ? "Cinematic motion." : "");
+                      const prompt = scene.videoPrompt || "Cinematic motion.";
                       const videoUrl = await generateVideoForScene(prompt, scene.imageUrl);
                       scenesAfterImages[index] = { ...scenesAfterImages[index], videoUrl };
 
@@ -392,13 +383,6 @@ const App: React.FC = () => {
                           return { ...prev, scenes: newScenes };
                       });
                   } catch (e) { console.error(e); }
-                  
-                  completedVideos++;
-                  setStatus({ 
-                      step: 'generating_videos', 
-                      progress: 85 + Math.round((completedVideos / videoIndices.length) * 15), 
-                      message: `Auto-Rendering Videos... (${completedVideos}/${videoIndices.length})` 
-                  });
               }));
               if (i + BATCH_SIZE < videoIndices.length) await delay(getJitter(2000, 4000));
           }
@@ -429,7 +413,7 @@ const App: React.FC = () => {
       setProject(prev => ({
         ...prev,
         visualStage: 'video_prompts',
-        scenes: (prev.scenes || []).map((s, i) => ({ ...s, videoPrompt: prompts[i] || (s.assetType === 'video' ? "Cinematic motion." : "") }))
+        scenes: (prev.scenes || []).map((s, i) => ({ ...s, videoPrompt: prompts[i] || "Cinematic motion." }))
       }));
       setStatus({ step: 'ready', progress: 100, message: 'Video Prompts Generated.' });
     } catch (e) { setStatus({ step: 'idle', progress: 0, message: 'Video Prompt Generation Failed.' }); }
@@ -639,7 +623,7 @@ const App: React.FC = () => {
                     });
                 }
 
-                const prompt = scene.videoPrompt || (scene.assetType === 'video' ? "Cinematic motion on white background." : "");
+                const prompt = scene.videoPrompt || "Cinematic motion on white background.";
                 const videoUrl = await generateVideoForScene(prompt, refImage!);
                 
                 setProject(prev => {
@@ -1154,7 +1138,7 @@ const SceneEditor: React.FC<{
           
           {scene.assetType === 'video' && (
             <button 
-              onClick={() => onRetryVideo(scene.videoPrompt || (scene.assetType === 'video' ? "Cinematic motion." : ""))} 
+              onClick={() => onRetryVideo(scene.videoPrompt || "Cinematic motion.")} 
               disabled={scene.isGeneratingVideo || !scene.imageUrl} 
               className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded text-[10px] font-bold transition-all disabled:opacity-50"
             >
