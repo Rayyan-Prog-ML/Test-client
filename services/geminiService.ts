@@ -111,7 +111,7 @@ export const generateScenes = async (script: string, totalDuration: number): Pro
 
   return await executeWithRetry(async (client) => {
     const response = await client.chat.completions.create({
-      model: "google/gemini-2.0-flash-001", 
+      model: "google/gemini-3.1-pro-preview", 
       messages: [
         {
           role: "system",
@@ -404,7 +404,7 @@ export const generateVideoForScene = async (prompt: string, imageUrl: string, re
 export const masterAuditScript = async (script: string, topic: string): Promise<{ auditedScript: string; changesLog: string }> => {
   const result = await executeWithRetry(async (client) => {
     const response = await client.chat.completions.create({
-      model: "google/gemini-2.0-flash-001",
+      model: "google/gemini-3.1-pro-preview",
       messages: [
         {
           role: "system",
@@ -807,7 +807,7 @@ export const determineScriptFramework = async (topic: string): Promise<number> =
         Return ONLY the number (5, 6, 8, or 13) that best fits the topic.`;
         
         const res = await client.chat.completions.create({
-            model: "google/gemini-2.0-flash-001", 
+            model: "google/gemini-3.1-pro-preview", 
             messages: [{ role: "user", content: prompt }]
         });
         
@@ -832,7 +832,7 @@ export const generateStoryOutline = async (topic: string, durationKey: number): 
 
     return executeWithRetry(async (client) => {
         const res = await client.chat.completions.create({
-            model: "google/gemini-2.0-flash-001", 
+            model: "google/gemini-3.1-pro-preview", 
             messages: [
                 {
                     role: "system",
@@ -866,7 +866,7 @@ export const auditStoryOutline = async (outline: ChapterOutline[], topic: string
         ${SAFETY_BLOCK}`;
         
         const res = await client.chat.completions.create({
-            model: "google/gemini-2.0-flash-001", 
+            model: "google/gemini-3.1-pro-preview", 
             messages: [
                 {
                     role: "system",
@@ -920,7 +920,7 @@ Summary of Script Architecture (Based on Sources):
 ${SAFETY_BLOCK}`;
 
         const res = await client.chat.completions.create({
-            model: "google/gemini-2.0-flash-001", 
+            model: "google/gemini-3.1-pro-preview", 
             messages: [
                 {
                     role: "system",
@@ -939,7 +939,7 @@ ${SAFETY_BLOCK}`;
 export const generateVideoMetadata = async (script: string, topic: string): Promise<string> => {
     const result = await executeWithRetry(async (client) => {
         const response = await client.chat.completions.create({
-            model: "google/gemini-2.0-flash-001",
+            model: "google/gemini-3.1-pro-preview",
             messages: [
                 {
                     role: "system",
