@@ -111,7 +111,7 @@ export const generateScenes = async (script: string, totalDuration: number): Pro
 
   return await executeWithRetry(async (client) => {
     const response = await client.chat.completions.create({
-      model: "google/gemini-2.0-flash-001", 
+      model: "google/gemini-2.5-flash", 
       messages: [
         {
           role: "system",
@@ -189,7 +189,7 @@ export const generateScenes = async (script: string, totalDuration: number): Pro
 export const generateImagePrompts = async (scenes: Scene[]): Promise<string[]> => {
   return await executeWithRetry(async (client) => {
     const response = await client.chat.completions.create({
-      model: "google/gemini-2.0-flash-001", 
+      model: "google/gemini-2.5-flash", 
       messages: [
         {
           role: "system",
@@ -231,7 +231,7 @@ export const generateVideoPrompts = async (scenes: Scene[]): Promise<string[]> =
 
   return await executeWithRetry(async (client) => {
     const response = await client.chat.completions.create({
-      model: "google/gemini-2.0-flash-001", 
+      model: "google/gemini-2.5-flash", 
       messages: [
         {
           role: "system",
