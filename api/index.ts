@@ -1,4 +1,5 @@
 import express from "express";
+import WaveSpeed from "wavespeed";
 
 const app = express();
 
@@ -84,7 +85,6 @@ app.post("/api/wavespeed/image", async (req, res) => {
       return res.status(401).json({ error: "WAVESPEED_API_KEY is missing" });
     }
 
-    const WaveSpeed = (await import('wavespeed')).default;
     const client = new WaveSpeed(apiKey);
 
     const { prompt, aspect_ratio } = req.body;
@@ -93,7 +93,7 @@ app.post("/api/wavespeed/image", async (req, res) => {
       prompt,
       aspect_ratio,
       num_images: 1,
-      output_format: "png"
+      output_format: "jpeg"
     });
 
     if (result && result.outputs && result.outputs.length > 0) {
@@ -115,7 +115,6 @@ app.post("/api/wavespeed/video", async (req, res) => {
       return res.status(401).json({ error: "WAVESPEED_API_KEY is missing" });
     }
 
-    const WaveSpeed = (await import('wavespeed')).default;
     const client = new WaveSpeed(apiKey);
 
     const { prompt, image_url } = req.body;

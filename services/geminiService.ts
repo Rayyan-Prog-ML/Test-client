@@ -313,12 +313,18 @@ const generateImageWithOpenRouter = async (description: string, aspectRatio: Asp
     const width = aspectRatio === '16:9' ? 1280 : aspectRatio === '9:16' ? 720 : 1024;
     const height = aspectRatio === '16:9' ? 720 : aspectRatio === '9:16' ? 1280 : 1024;
     
-    const encodedPrompt = encodeURIComponent(finalPrompt);
+    const truncatedPrompt = finalPrompt.length > 1500 ? finalPrompt.substring(0, 1500) : finalPrompt;
+    const encodedPrompt = encodeURIComponent(truncatedPrompt);
     const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&nologo=true`;
     
     try {
         const response = await fetch(imageUrl);
         if (!response.ok) throw new Error("Failed to fetch image from Pollinations");
+        
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.startsWith("image/")) {
+            throw new Error("Pollinations did not return an image");
+        }
         
         const blob = await response.blob();
         const base64 = await new Promise<string>((resolve, reject) => {
