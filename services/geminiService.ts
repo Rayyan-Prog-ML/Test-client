@@ -111,7 +111,7 @@ export const generateScenes = async (script: string, totalDuration: number): Pro
 
   return await executeWithRetry(async (client) => {
     const response = await client.chat.completions.create({
-      model: "google/gemini-3.1-pro-preview", 
+      model: "google/gemini-2.5-flash", 
       messages: [
         {
           role: "system",
