@@ -159,4 +159,16 @@ app.get("/api/proxy/image", async (req, res) => {
   }
 });
 
+// 6. Login endpoint
+app.post("/api/login", (req, res) => {
+  const { password } = req.body;
+  const correctPassword = process.env.VITE_APP_PASSWORD || 'VideoMaker2026!';
+  
+  if (password === correctPassword) {
+    res.json({ success: true });
+  } else {
+    res.status(401).json({ success: false, error: "Incorrect password" });
+  }
+});
+
 export default app;

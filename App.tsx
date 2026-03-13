@@ -790,16 +790,23 @@ const App: React.FC = () => {
             <h1 className="text-2xl font-bold tracking-tight text-white">RMagine <span className="text-brand-400">Master</span></h1>
           </div>
           <p className="text-gray-400 text-center mb-6 text-sm">Please enter the access password to continue.</p>
-          <form onSubmit={(e) => {
+          <form onSubmit={async (e) => {
             e.preventDefault();
-            // In a real app, this would be an environment variable like import.meta.env.VITE_APP_PASSWORD
-            // For this setup, we check against a hardcoded string or env var
-            const correctPassword = (import.meta as any).env.VITE_APP_PASSWORD || 'VideoMaker2026!';
-            if (passwordInput === correctPassword) {
-              setIsAuthenticated(true);
-            } else {
-              alert('Incorrect password');
-              setPasswordInput('');
+            try {
+              const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: passwordInput })
+              });
+              if (response.ok) {
+                setIsAuthenticated(true);
+              } else {
+                alert('Incorrect password');
+                setPasswordInput('');
+              }
+            } catch (error) {
+              console.error('Login error:', error);
+              alert('An error occurred during login');
             }
           }} className="space-y-4">
             <input 
